@@ -1,0 +1,3 @@
+[submodule "libraries/ESP-Mail-Client"]
+	path = libraries/ESP-Mail-Client
+	url = https://github.com/mobizt/ESP-Mail-Client.git
