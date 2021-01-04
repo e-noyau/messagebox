@@ -1,6 +1,8 @@
 
 // Duplicate this file into config.h and fill the blanks according to your needs.
 
+#define HOSTNAME "########"
+
 // How to connect to WiFi
 #define WIFI_SSID "################"
 #define WIFI_PASSWORD "################"
