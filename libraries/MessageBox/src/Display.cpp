@@ -1,18 +1,12 @@
 
 #include "Display.h"
 
-constexpr int top_margin = 30;
-constexpr int bottom_margin = 30;
-constexpr int line_margin = 10;
-constexpr int text_margin = 3;
-
-
 #include <iostream>
 #include <sstream>
 #include <string>
 
-struct Rect
-{
+// I was tired of carrying those around.
+struct Rect {
   int16_t x, y;      
   uint8_t width, height; 
   Rect() = default;
@@ -30,15 +24,12 @@ struct Rect
 // hyphenation, if a word does not fit on one line, it will exceed the alloted size…
 //
 static std::vector<std::string> wrap(const std::string &text, int16_t max_width, 
-                                     std::function<int16_t(const std::string&)> sizing) {
-    
+                                     std::function<int16_t(const std::string&)> sizing) {  
   std::vector<std::string> lines;
-               
   std::istringstream words(text);
   std::ostringstream next_line;
-  
   std::string word;
-  
+
   const size_t space_length = sizing(" ");
 
   if (words >> word) {
@@ -63,27 +54,41 @@ static std::vector<std::string> wrap(const std::string &text, int16_t max_width,
 }
 
 
-Display::Display(GxEPD *ePaper) : ePaper(ePaper) {
-  u8g2.begin(*ePaper); // connect u8g2 procedures to Adafruit GFX
+Display::Display(GxEPD *e_paper, bool show_battery) : 
+     _e_paper(e_paper), _show_battery(show_battery) {
+  _u8g2.begin(*_e_paper); // connect u8g2 procedures to Adafruit GFX
+  
+  if (_show_battery) {
+    _top_margin = 30;
+    _bottom_margin = 30;
+    _text_margin = 3;
+  } else {
+    _top_margin = 3;
+    _bottom_margin = 30;
+    _text_margin = 3;
+  }
 }
 
 
 void Display::fullRefresh(const std::string &text, int battery_level) {
-  
-  ePaper->fillScreen(GxEPD_WHITE);
-  ePaper->drawFastHLine(line_margin, top_margin, 
-                        ePaper->width() - line_margin * 2, GxEPD_BLACK);
-  ePaper->drawFastHLine(line_margin, ePaper->height() - bottom_margin,
-                        ePaper->width() - line_margin * 2, GxEPD_BLACK);
-
+  _e_paper->fillScreen(GxEPD_WHITE);
+  if (_show_battery) {
+    _e_paper->drawFastHLine(_text_margin, _top_margin, 
+                          _e_paper->width() - _text_margin * 2, GxEPD_BLACK);
+    updateBatteryLevel(battery_level, /*erase=*/false);
+  }
+  _e_paper->drawFastHLine(_text_margin, _e_paper->height() - _bottom_margin,
+                        _e_paper->width() - _text_margin * 2, GxEPD_BLACK);
   updateText(text, /*erase=*/false);
-  updateBatteryLevel(battery_level, /*erase=*/false);
-  ePaper->update();
+  _e_paper->update();
 }
 
 
 void Display::updateBatteryLevel(int battery_level, bool erase) {
-  
+  if (!_show_battery) {
+    return;
+  }
+
   if (battery_level < 0) {
     battery_level = 0;
   } else if (battery_level > 5) {
@@ -91,32 +96,35 @@ void Display::updateBatteryLevel(int battery_level, bool erase) {
   }
   uint16_t glyph = 0x0030 + battery_level;
 
-  u8g2.setFont(u8g2_font_battery19_tn);
-  u8g2.setFontDirection(1);              
+  _u8g2.setFont(u8g2_font_battery19_tn);
+  _u8g2.setFontDirection(1);              
 
-  int v = (bottom_margin - u8g2.getUTF8Width("0")) / 2;
-  
-  // int batt = map(voltage*10, 28, 40, 48, 53);
-  
-  Rect update = Rect(175, v, u8g2.getUTF8Width("0"), u8g2.getFontAscent());
+  int v = (_bottom_margin - _u8g2.getUTF8Width("0")) / 2;
+    
+  // [TODO] This is incorrect.
+  Rect update = Rect(175, v, _u8g2.getUTF8Width("0"), _u8g2.getFontAscent());
   
   if (erase) {
-    ePaper->fillRect(update.x, update.y, update.width, update.height, GxEPD_WHITE);
+    _e_paper->fillRect(update.x, update.y, update.width, update.height, GxEPD_WHITE);
   }
   
-  u8g2.drawGlyph(175, v, glyph);
-  u8g2.setFontDirection(0);  // left to right (this is default)
+  _u8g2.drawGlyph(175, v, glyph);
+  _u8g2.setFontDirection(0);  // left to right (this is default)
   
   if (erase) {
-    ePaper->updateWindow(update.x, update.y, update.width, update.height, false);
+    _e_paper->updateWindow(update.x, update.y, update.width, update.height, false);
   }
 }
 
-void Display::updateText(const std::string &text, bool erase) {    
+
+void Display::updateText(const std::string &text, bool erase) {
+  Rect update = Rect(_text_margin,
+                     _top_margin + 1,
+                     _e_paper->width() - _text_margin * 2, 
+                     _e_paper->height() - _top_margin - _bottom_margin - 2);
+  
   if (erase) {
-    ePaper->fillRect(0, top_margin + 1,
-                     ePaper->width(), ePaper->height() - top_margin - bottom_margin - 2,
-                     GxEPD_WHITE);
+    _e_paper->fillRect(update.x, update.y, update.width, update.height, GxEPD_WHITE);
   }
   
   // The fonts to try, from the largest to the smallest. All the sizes will be tried in order until
@@ -131,46 +139,45 @@ void Display::updateText(const std::string &text, bool erase) {
   int8_t line_height;
   
   for (int ii = 0; ii < fontCount; ii++) {
-    u8g2.setFont(fonts[ii]);
-    line_height = u8g2.getFontAscent() + (-u8g2.getFontDescent()) + 7;
+    _u8g2.setFont(fonts[ii]);
+    line_height = _u8g2.getFontAscent() + (-_u8g2.getFontDescent()) + 7;
     
     auto sizing = [&](const std::string &word) -> int16_t {
-        return u8g2.getUTF8Width(word.c_str());
+        return _u8g2.getUTF8Width(word.c_str());
     };
-    auto max_width = ePaper->width() - text_margin * 2;
-    lines = wrap(text, max_width, sizing);
+    lines = wrap(text, update.width, sizing);
     
     // If one of the line is too long, this means a word doesn't fit on one line. In that case, loop
     // and try a smaller font.
     bool too_long = false;
     for (int jj = 0; jj < lines.size(); jj++) {
-      if (sizing(lines[jj]) > max_width)
+      if (sizing(lines[jj]) > update.width)
         too_long = true;
     }
     if (too_long)
       continue;  // One word does not fit on one line…
 
     // Checks if the number of lines fits on the screen. If it does, it's done.
-    if (line_height * lines.size() <= ePaper->height() - top_margin - bottom_margin - 2)
+    if (line_height * lines.size() <= update.height)
       break;
   }
   
-  u8g2.setForegroundColor(GxEPD_BLACK);  // apply Adafruit GFX color
-  u8g2.setBackgroundColor(GxEPD_WHITE);  // apply Adafruit GFX color
-  u8g2.setFontMode(1);
-    
+  // This is not perfect, there are a couple of pathological cases:
+  // * If one word is larger than the screen, even with the smallest font, it will be clipped
+  // * If the text is too long, the bottom lines will be ignored.
+  _u8g2.setForegroundColor(GxEPD_BLACK);  // apply Adafruit GFX color
+  _u8g2.setBackgroundColor(GxEPD_WHITE);  // apply Adafruit GFX color
+  _u8g2.setFontMode(1);
+
   for (int ii = 0; ii < lines.size(); ii++) {
-    auto vertical_position = top_margin + u8g2.getFontAscent() + 5 + line_height * ii;
-    u8g2.drawUTF8(text_margin, vertical_position, lines[ii].c_str());
+    auto vertical_position = _top_margin + _u8g2.getFontAscent() + 5 + line_height * ii;
+    _u8g2.drawUTF8(_text_margin, vertical_position, lines[ii].c_str());
     
-    if (vertical_position > ePaper->height() - bottom_margin)
+    if (vertical_position > _e_paper->height() - _bottom_margin)
       break;
   }
 
   if (erase) {
-    ePaper->updateWindow(0, top_margin + 1,
-                         ePaper->width(), ePaper->height() - top_margin - bottom_margin - 2,
-                         false);
+    _e_paper->updateWindow(update.x, update.y, update.width, update.height, false);
   }
 }
-
