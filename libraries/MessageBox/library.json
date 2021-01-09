@@ -1,0 +1,16 @@
+{
+  "name": "MessageBox",
+  "version": "0.1",
+  "keywords": "display, esp32, arduino, eInk",
+  "description": "This library takes care of displaying arbitrary text safely on the small e-Ink screen of the Lilygo T-Block with e-Ink screen.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/enoyau/messagebox/library/MessageBox"
+  },
+  "authors": [{
+    "name": "enoyau",
+    "email": "eric@noyau.net"
+  }],
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

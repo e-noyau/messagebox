@@ -1,3 +1,4 @@
+#pragma once
 
 typedef enum {
 	MESSAGES_OK = 0,

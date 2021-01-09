@@ -1,9 +1,21 @@
 #include <WiFi.h>
+#include <Display.h>
 
-#include "messages.h"
+
+// What I know about the hardware so far:
+// 
+// * There are two buttons, one of them is directly connected to the power unit the other
+//   is [ttgo->button]
+// * PCF8563: RTC (Real Time Clock)
+// * AXP202: Battery management hardware [ttgo->power]
+// * MPU6050: Triple Axis Gyroscope & Accelerometer [ttgo->mpu]
+// * eINK is an uses GxEPD
+//
+// There is a LED inside, no idea how to control it.
+
+
 #include "config.h"
-
-#define ONBOARD_LED  2
+#include "messages.h"
 
 typedef enum {
   STATUS_NO_MESSAGE,
@@ -20,26 +32,38 @@ typedef enum {
 Status currentStatus = STATUS_NO_MESSAGE;
 Status previousStatus = STATUS_NO_MESSAGE;
 int previousWiFiStatus;
-int ledState;
 
 String currentMessage;
 
 unsigned long previousMillis = 0; // last time LED was updated
 
+TTGOClass *ttgo = nullptr;
+Display *display = nullptr;
+
 void setup() {
-  pinMode(ONBOARD_LED, OUTPUT);
-  digitalWrite(ONBOARD_LED, LOW);
-  ledState = LOW;
-  
+
 	Serial.begin(115200);
-  WiFi.persistent(false);
+  delay(200); // Give some time for the serial port to start.
   
+  // The very much important message.
   currentMessage = String("");
   setupMessages();
-  
-  WiFiEventId_t eventID = WiFi.onEvent(&eventHandler);
-  
+    
+  // No need to persist anything for WiFi, the network is hardcoded anyway.
+  WiFi.persistent(false);
+  WiFiEventId_t eventID = WiFi.onEvent(&eventHandler);  
   previousWiFiStatus = WiFi.status();
+  
+  //Get watch instance and initialize its hardware.
+  ttgo = TTGOClass::getWatch();
+  ttgo->begin();
+
+  // Turn on batery monitoring.
+  ttgo->power->adc1Enable(AXP202_VBUS_VOL_ADC1 | AXP202_VBUS_CUR_ADC1 | AXP202_BATT_CUR_ADC1 | AXP202_BATT_VOL_ADC1, true);
+  
+  //
+  display = new Display(ttgo->ePaper);
+  display->fullRefresh("Loading");
 }
 
 
@@ -53,7 +77,7 @@ void eventHandler(WiFiEvent_t event, WiFiEventInfo_t info) {
 
       case WiFiEvent_t::SYSTEM_EVENT_STA_CONNECTED:
           Serial.println("STA Connected");
-          WiFi.enableIpV6();
+          //WiFi.enableIpV6();
           break;
 
       case WiFiEvent_t::SYSTEM_EVENT_AP_STA_GOT_IP6:
@@ -117,55 +141,34 @@ void loop() {
   if ((previousStatus != currentStatus) || (currentWiFiStatus != previousWiFiStatus)) {
     String status = "Status changed from: " + String(previousStatus) + 
                     " to: " + String(currentStatus) + " WiFi: " + String(currentWiFiStatus);
+
+    AXP20X_Class *power = ttgo->power;
+    if (power->isVBUSPlug()) {
+      status = status + "\n   Power " + String(power->getVbusVoltage()) + " mV / " + 
+             String(power->getVbusCurrent()) + "mA";
+    }
+    if (power->isBatteryConnect()) {
+      status = status + "\n   Battery " + String(power->getBattVoltage()) + " mV - ";
+      if (power->isChargeing()) {
+        status = status + "Charging " + String(power->getBattChargeCurrent()) + " mA (" +
+          String(power->getBattPercentage()) + " %)";
+      } else {
+        status = status + "Discharge " + String(power->getBattDischargeCurrent()) + " mA (" +
+          String(power->getBattPercentage()) + " %)";
+      }
+    }
+    
+    status = status + "\n   Temp : " + String(power->getTemp()) + " C - " + 
+      String(ttgo->mpu->readTemperature()) + " C";
     Serial.println(status);
     previousStatus = currentStatus;
     previousWiFiStatus = currentWiFiStatus;
   }
   
-  
-  // LED status
-  // Led is off if radio is turned off, blinking while connecting/disconnecting, solid while doing a network action
-  {
-    int previousLEDState = ledState;
-    switch(currentStatus) {
-      case STATUS_NO_MESSAGE:
-    	case STATUS_IDLE:
-        ledState = LOW;
-        break;
-      case STATUS_NETWORK_STARTING:
-      case STATUS_NETWORK_CONNECTING:
-      case STATUS_NETWORK_STOPPING:
-      case STATUS_ACTION_DONE:
-      case STATUS_ACTION_FAILED:
-        ledState = HIGH; 
-        break;
-      case STATUS_NETWORK_STARTED:
-    	case STATUS_ACTION_IN_PROGRESS:
-        {
-          // blink
-          unsigned long currentMillis = millis();
-
-          if (currentMillis - previousMillis >= 100) {
-            previousMillis = currentMillis;
-            // if the LED is off turn it on and vice-versa:
-            if (ledState == LOW) {
-              ledState = HIGH;
-            } else {
-              ledState = LOW;
-            }
-          }
-        }
-        break;
-    }
-    // set the LED with the ledState of the variable:
-    if (previousLEDState != ledState) {
-      digitalWrite(ONBOARD_LED, ledState);
-    }
-  }
-  
   // If there are no messages, go fetch one.
   if (currentStatus == STATUS_NO_MESSAGE) {
     currentStatus = STATUS_NETWORK_STARTING;
+    WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   }
   
@@ -184,6 +187,7 @@ void loop() {
         currentMessage = message;
         Serial.print("Message is: ");
         Serial.println(message);
+        display->updateText(message.c_str());
         currentStatus = STATUS_ACTION_DONE;
       } else {
         Serial.print(error);

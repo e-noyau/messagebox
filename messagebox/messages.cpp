@@ -13,7 +13,7 @@ void setupMessages() {
 
 
 static void invokeCallback(String message, MessageError error) {
-  callback(message, MessageError::MESSAGES_NO_MESSAGE_FOUND);
+  callback(message, error);
   callback = nullptr;
   /* Close the session in case the session is still open */
   imap.closeSession();
