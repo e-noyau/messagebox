@@ -1,21 +1,20 @@
 #include <WiFi.h>
-#include <Display.h>
-
-
-// What I know about the hardware so far:
-// 
-// * There are two buttons, one of them is directly connected to the power unit the other
-//   is [ttgo->button]
-// * PCF8563: RTC (Real Time Clock)
-// * AXP202: Battery management hardware [ttgo->power]
-// * MPU6050: Triple Axis Gyroscope & Accelerometer [ttgo->mpu]
-// * eINK is an uses GxEPD
-//
-// There is a LED inside, no idea how to control it.
-
+#include <TextDisplay.h>
+// Makes dealing with buttons a little bit more sane
+#include <Button2.h>
 
 #include "config.h"
-#include "messages.h"
+#include <messages.h>
+
+// The io port, the display, the graphic library, and our own text wrapper.
+GxIO_Class io(SPI, /*CS=5*/ EINK_SS, /*DC=*/ EINK_DC, /*RST=*/ EINK_RESET);
+GxEPD_Class e_paper(io, /*RST=*/ EINK_RESET, /*BUSY=*/ EINK_BUSY);
+TextDisplay text_display(e_paper);
+TextDisplay text_attribution(e_paper);
+IMAPFetcher fetcher;
+
+// The button used.
+Button2 button = Button2(USER_BUTTON);
 
 typedef enum {
   STATUS_NO_MESSAGE,
@@ -33,37 +32,59 @@ Status currentStatus = STATUS_NO_MESSAGE;
 Status previousStatus = STATUS_NO_MESSAGE;
 int previousWiFiStatus;
 
-String currentMessage;
+std::string currentMessage;
+std::string currentAuthor;
 
-unsigned long previousMillis = 0; // last time LED was updated
+static void refreshScreen() {
+  e_paper.fillScreen(GxEPD_WHITE);
+  
+  e_paper.setRotation(1);
+  text_display.update(currentMessage);
 
-TTGOClass *ttgo = nullptr;
-Display *display = nullptr;
+  const Rect &position = text_display.position();
+  e_paper.drawFastVLine(position.x - 3, position.y, position.height, GxEPD_BLACK);
+
+  if (currentAuthor.length()) {
+    e_paper.setRotation(0);
+    text_attribution.update(currentAuthor);
+  }
+
+  e_paper.update();
+}
 
 void setup() {
 
 	Serial.begin(115200);
   delay(200); // Give some time for the serial port to start.
-  
-  // The very much important message.
-  currentMessage = String("");
-  setupMessages();
+
+	Serial.begin(115200);
+
+  SPI.begin(EINK_SPI_CLK, EINK_SPI_MISO, EINK_SPI_MOSI, EINK_SS);
+  e_paper.init();
     
   // No need to persist anything for WiFi, the network is hardcoded anyway.
   WiFi.persistent(false);
   WiFiEventId_t eventID = WiFi.onEvent(&eventHandler);  
   previousWiFiStatus = WiFi.status();
   
-  //Get watch instance and initialize its hardware.
-  ttgo = TTGOClass::getWatch();
-  ttgo->begin();
-
   // Turn on batery monitoring.
-  ttgo->power->adc1Enable(AXP202_VBUS_VOL_ADC1 | AXP202_VBUS_CUR_ADC1 | AXP202_BATT_CUR_ADC1 | AXP202_BATT_VOL_ADC1, true);
+  // ttgo->power->adc1Enable(AXP202_VBUS_VOL_ADC1 | AXP202_VBUS_CUR_ADC1 | AXP202_BATT_CUR_ADC1 | AXP202_BATT_VOL_ADC1, true);
   
-  //
-  display = new Display(ttgo->ePaper);
-  display->fullRefresh("Loading");
+  static const int margin = 3;
+  static const int attribution_height = 40;
+  
+  e_paper.setRotation(1);
+  text_display.setDisplayPosition(
+      Rect(attribution_height, margin,
+           e_paper.width() - attribution_height - margin * 2, e_paper.height() -  margin * 2));
+  
+  e_paper.setRotation(0);
+  text_attribution.setDisplayPosition(
+      Rect(margin, margin, e_paper.width() - margin, attribution_height - margin * 2));
+    
+  currentMessage = "Loading";
+  refreshScreen();
+  //button.setPressedHandler(press);
 }
 
 
@@ -142,24 +163,24 @@ void loop() {
     String status = "Status changed from: " + String(previousStatus) + 
                     " to: " + String(currentStatus) + " WiFi: " + String(currentWiFiStatus);
 
-    AXP20X_Class *power = ttgo->power;
-    if (power->isVBUSPlug()) {
-      status = status + "\n   Power " + String(power->getVbusVoltage()) + " mV / " + 
-             String(power->getVbusCurrent()) + "mA";
-    }
-    if (power->isBatteryConnect()) {
-      status = status + "\n   Battery " + String(power->getBattVoltage()) + " mV - ";
-      if (power->isChargeing()) {
-        status = status + "Charging " + String(power->getBattChargeCurrent()) + " mA (" +
-          String(power->getBattPercentage()) + " %)";
-      } else {
-        status = status + "Discharge " + String(power->getBattDischargeCurrent()) + " mA (" +
-          String(power->getBattPercentage()) + " %)";
-      }
-    }
-    
-    status = status + "\n   Temp : " + String(power->getTemp()) + " C - " + 
-      String(ttgo->mpu->readTemperature()) + " C";
+    // AXP20X_Class *power = ttgo->power;
+    // if (power->isVBUSPlug()) {
+    //   status = status + "\n   Power " + String(power->getVbusVoltage()) + " mV / " +
+    //          String(power->getVbusCurrent()) + "mA";
+    // }
+    // if (power->isBatteryConnect()) {
+    //   status = status + "\n   Battery " + String(power->getBattVoltage()) + " mV - ";
+    //   if (power->isChargeing()) {
+    //     status = status + "Charging " + String(power->getBattChargeCurrent()) + " mA (" +
+    //       String(power->getBattPercentage()) + " %)";
+    //   } else {
+    //     status = status + "Discharge " + String(power->getBattDischargeCurrent()) + " mA (" +
+    //       String(power->getBattPercentage()) + " %)";
+    //   }
+    // }
+    //
+    // status = status + "\n   Temp : " + String(power->getTemp()) + " C - " +
+    //   String(ttgo->mpu->readTemperature()) + " C";
     Serial.println(status);
     previousStatus = currentStatus;
     previousWiFiStatus = currentWiFiStatus;
@@ -182,19 +203,21 @@ void loop() {
   if (currentStatus == STATUS_NETWORK_STARTED) {
     currentStatus = STATUS_ACTION_IN_PROGRESS;
     // Despite taking a function as a parameter, this is mostly synchronous.
-    bool result = getFirstUnreadMessage([] (String message, MessageError error) -> void {
-      if (error == MESSAGES_OK) {
-        currentMessage = message;
-        Serial.print("Message is: ");
-        Serial.println(message);
-        display->updateText(message.c_str());
-        currentStatus = STATUS_ACTION_DONE;
-      } else {
-        Serial.print(error);
-        Serial.print(" ");
-        Serial.println(message);
-        currentStatus = STATUS_ACTION_FAILED;
-      }
+    bool result = fetcher.getFirstUnreadMessage(
+        [] (const std::string &message, const std::string &author, MessageError error) -> void {
+          if (error == MESSAGES_OK) {
+            currentMessage = message;
+            currentAuthor = author;
+            Serial.print("Message is: ");
+            Serial.println(message.c_str());
+            refreshScreen();
+            currentStatus = STATUS_ACTION_DONE;
+          } else {
+            Serial.print(error);
+            Serial.print(" ");
+            Serial.println(message.c_str());
+            currentStatus = STATUS_ACTION_FAILED;
+          }
     });
     return;
   }

@@ -4,3 +4,21 @@
 [submodule "libraries/TTGO_TWatch_Library"]
 	path = libraries/TTGO_TWatch_Library
 	url = git@github.com:Xinyuan-LilyGO/TTGO_TWatch_Library.git
+[submodule "libraries/GxEPD"]
+	path = libraries/GxEPD
+	url = git@github.com:ZinggJM/GxEPD.git
+[submodule "libraries/Button2"]
+	path = libraries/Button2
+	url = git@github.com:LennartHennigs/Button2.git
+[submodule "libraries/Adafruit-GFX-Library"]
+	path = libraries/Adafruit-GFX-Library
+	url = git@github.com:adafruit/Adafruit-GFX-Library.git
+[submodule "libraries/Adafruit_BusIO"]
+	path = libraries/Adafruit_BusIO
+	url = git@github.com:adafruit/Adafruit_BusIO.git
+[submodule "libraries/U8g2_for_Adafruit_GFX"]
+	path = libraries/U8g2_for_Adafruit_GFX
+	url = git@github.com:olikraus/U8g2_for_Adafruit_GFX.git
+[submodule "libraries/IotWebConf"]
+	path = libraries/IotWebConf
+	url = git@github.com:prampec/IotWebConf.git

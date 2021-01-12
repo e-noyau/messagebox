@@ -1,11 +1,26 @@
-#include "config.h"
-#include <Display.h>
 
-TTGOClass *ttgo = nullptr;
-Display *display = nullptr;
+// Makes dealing with buttons a little bit more sane
+#include <Button2.h>
 
-typedef char * MessageType;
-static constexpr MessageType sample_messages[] = {
+//#define HARDWARE_LILYGO_T_BLOCK
+#define HARDWARE_LILYGO_T_H239
+#include <MessageBoxHardware.h>
+
+// The class under test.
+#include <TextDisplay.h>
+
+// The io port, the display, the graphic library, and our own text wrapper.
+GxIO_Class io(SPI, /*CS=5*/ EINK_SS, /*DC=*/ EINK_DC, /*RST=*/ EINK_RESET);
+GxEPD_Class e_paper(io, /*RST=*/ EINK_RESET, /*BUSY=*/ EINK_BUSY);
+TextDisplay text_display(e_paper);
+TextDisplay text_attribution(e_paper);
+
+// The button used.
+Button2 button = Button2(USER_BUTTON);
+
+
+
+static constexpr char *sample_messages[] = {
   "123",
   "Ceci n'est pas un message.",
   "Que ce passe t'il lorsqu'un texte très long est mis en place sans prévenir ?",
@@ -80,29 +95,62 @@ static constexpr MessageType sample_messages[] = {
   "À dire faux pour attraper du bien. "
   "Que sert cela ? Jupiter n’est pas dupe. "
 };
-static constexpr int sample_messages_count = sizeof(sample_messages) / sizeof(MessageType);
+static constexpr int sample_messages_count = sizeof(sample_messages) / sizeof(char *);
 
-static int currentMessage = -1;
-static int batteryLevel = 0;
+static constexpr char *authors[] = { "Math", "Magritte", "Philosophe", "Éric", "Jean De La Fontaine"};
 
-static void press() {
-  currentMessage = (currentMessage + 1) % sample_messages_count;
-  display->updateText(sample_messages[currentMessage]);
+static char *currentMessage = nullptr;
+static char *currentAuthor = nullptr;
+
+static void refreshScreen() {
+  e_paper.fillScreen(GxEPD_WHITE);
+  
+  e_paper.setRotation(1);
+  text_display.update(currentMessage);
+
+  const Rect &position = text_display.position();
+  e_paper.drawFastVLine(position.x - 3, position.y, position.height, GxEPD_BLACK);
+
+  if (currentAuthor) {
+    e_paper.setRotation(0);
+    text_attribution.update(currentAuthor);
+  }
+
+  e_paper.update();
+}
+
+// On button press, cycle the display.
+static void press(Button2 &button) {
+  static int messageIndex = -1;
+  messageIndex = (messageIndex + 1) % sample_messages_count;
+  currentMessage = sample_messages[messageIndex];
+  currentAuthor = authors[messageIndex];
+  refreshScreen();
 }
 
 void setup() {
 	Serial.begin(115200);
-  
-  //Get watch instance and initialize its hardware.
-  ttgo = TTGOClass::getWatch();
-  ttgo->begin();
-  
-  display = new Display(ttgo->ePaper, /*battery =*/false); 
-  display->fullRefresh("Press button to cycle", batteryLevel);
 
-  ttgo->button->setPressedHandler(press);
+  SPI.begin(EINK_SPI_CLK, EINK_SPI_MISO, EINK_SPI_MOSI, EINK_SS);
+  e_paper.init();
+  
+  static const int margin = 3;
+  static const int attribution_height = 40;
+  
+  e_paper.setRotation(1);
+  text_display.setDisplayPosition(
+      Rect(attribution_height, margin,
+           e_paper.width() - attribution_height - margin * 2, e_paper.height() -  margin * 2));
+  
+  e_paper.setRotation(0);
+  text_attribution.setDisplayPosition(
+      Rect(margin, margin, e_paper.width() - margin, attribution_height - margin * 2));
+    
+  currentMessage = "Press button to cycle";
+  refreshScreen();
+  button.setPressedHandler(press);
 }
 
 void loop() {
-  ttgo->button->loop();
+  button.loop();
 }

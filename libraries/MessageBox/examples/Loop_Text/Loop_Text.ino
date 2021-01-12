@@ -1,8 +1,17 @@
-#include "config.h"
-#include <Display.h>
+#define HARDWARE_LILYGO_T_BLOCK
+// #define HARDWARE_LILYGO_T_H239
+#include <MessageBoxHardware.h>
+#include <TextDisplay.h>
+// Makes dealing with buttons a little bit more sane
+#include <Button2.h>
 
-TTGOClass *ttgo = nullptr;
-Display *display = nullptr;
+// The io port, the display, the graphic library, and our own text wrapper.
+GxIO_Class io(SPI, /*CS=5*/ EINK_SS, /*DC=*/ EINK_DC, /*RST=*/ EINK_RESET);
+GxEPD_Class e_paper(io, /*RST=*/ EINK_RESET, /*BUSY=*/ EINK_BUSY);
+TextDisplay text_display(e_paper);
+
+Button2 button = Button2(USER_BUTTON);
+
 
 typedef char * MessageType;
 static constexpr MessageType sample_messages[] = {
@@ -82,27 +91,40 @@ static constexpr MessageType sample_messages[] = {
 };
 static constexpr int sample_messages_count = sizeof(sample_messages) / sizeof(MessageType);
 
-static int currentMessage = -1;
-static int batteryLevel = 0;
+static char *currentMessage = nullptr;
 
-static void press() {
-  currentMessage = (currentMessage + 1) % sample_messages_count;
-  display->updateText(sample_messages[currentMessage]);
+static void refreshScreen() {
+  e_paper.fillScreen(GxEPD_WHITE);  
+  text_display.update(currentMessage);
+  e_paper.update();
 }
+
+// On button press, cycle the display.
+static void press(Button2 &button) {
+  static int messageIndex = -1;
+  messageIndex = (messageIndex + 1) % sample_messages_count;
+  currentMessage = sample_messages[messageIndex];
+  refreshScreen();
+}
+
 
 void setup() {
 	Serial.begin(115200);
-  
-  //Get watch instance and initialize its hardware.
-  ttgo = TTGOClass::getWatch();
-  ttgo->begin();
-  
-  display = new Display(ttgo->ePaper, /*battery =*/false); 
-  display->fullRefresh("Press button to cycle", batteryLevel);
 
-  ttgo->button->setPressedHandler(press);
+  SPI.begin(EINK_SPI_CLK, EINK_SPI_MISO, EINK_SPI_MOSI, EINK_SS);
+  e_paper.init();
+  
+  static const int margin = 3;
+  
+  text_display.setDisplayPosition(
+      Rect(margin, margin,
+           e_paper.width() - margin * 2, e_paper.height() -  margin * 2));
+    
+  currentMessage = "Press button to cycle";
+  refreshScreen();
+  button.setPressedHandler(press);
 }
 
 void loop() {
-  ttgo->button->loop();
+  button.loop();
 }
