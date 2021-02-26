@@ -93,7 +93,7 @@ bool IMAPFetcher::initilializeIMAP() {
   _config.enable.recent_sort = true;
 
   // Report the download progress via the default serial port
-  _config.enable.download_status = true;
+  _config.enable.download_status = false;
 
   // Set the limit of number of messages in the search results
   _config.limit.search = 1;

@@ -188,8 +188,6 @@ void loop() {
   currentState = content.str();
   if (currentState != previousState) {
     updateScreen(currentState, title);
-    
-    Serial.println(currentState.c_str());
     previousState = currentState;
   }
   
@@ -199,15 +197,32 @@ void loop() {
     if (online) {  
       bool result = fetcher.getFirstUnreadMessage(
           [] (const std::string &message, const std::string &author, MessageError error) -> void {
-            if (error == MESSAGES_OK) {
-              Serial.print("Message is: ");
-              Serial.println(message.c_str());
-              updateScreen(message, author);
-            } else {
-              Serial.print(error);
-              Serial.print(" ");
-              updateScreen("Reboot, something failed :" + error, "OOOOPS!");
-            }         
+            switch(error) {
+              case MESSAGES_OK:
+                updateScreen(message, author);
+                break;
+              case MESSAGES_NO_MESSAGE_FOUND:
+                updateScreen("No more messages! Ask your loved ones for more.", "Add Love");
+                break;
+            	case MESSAGES_NO_NETWORK:
+                updateScreen(message, "No Network");
+                break;
+            	case MESSAGES_IMAP_CONNECTION_FAILED:
+                updateScreen(message, "IMAP Connection");
+                break;
+            	case MESSAGES_FOLDER_NOT_FOUND:
+                updateScreen(message, "Invalid Folder");
+                break;
+            	case MESSAGES_FLAG_SET_FAIL:
+                updateScreen(message, "Flag");
+                break;
+              case MESSAGES_CONNECTION_IN_PROGRESS:
+                updateScreen(message, "Reentry");
+                break;
+              default:
+                updateScreen("Reboot, something failed", "OOOOPS!");
+                break;
+            }
           });
     }
   }

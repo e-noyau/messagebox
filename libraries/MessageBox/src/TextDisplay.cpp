@@ -60,7 +60,7 @@ void TextDisplay::update(const std::string &text) {
   // The fonts to try, from the largest to the smallest. All the sizes will be tried in order until
   // the text fits. 
   const uint8_t *fonts[] = {
-#if 0
+#if 1
     u8g2_font_helvR24_te, u8g2_font_helvR18_te, u8g2_font_helvR14_te,
     u8g2_font_helvR12_te, u8g2_font_helvR10_te, u8g2_font_helvR08_te
 #else

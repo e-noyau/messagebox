@@ -29,7 +29,7 @@ typedef std::function<void(const std::string &message,
 class IMAPFetcher {
 public:
   IMAPFetcher(IMAPConnectionData &connection_data) : _connection_data(connection_data){
-    _imap.debug(1);
+    _imap.debug(0);
   };
   ~IMAPFetcher() {};
   
