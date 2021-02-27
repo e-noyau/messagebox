@@ -2,6 +2,7 @@
 #include <ESP_Mail_Client.h>
 
 #include "messages.h"
+#include "esp_system.h"
 
 // This IMAP API is a pain in the but.
 static IMAPFetcher *fetcher = nullptr;
@@ -36,20 +37,20 @@ void IMAPFetcher::imapCallback(IMAP_Status status) {
     invokeCallback("Sorry, all the messages have been consumed. Ask your loved ones for more!",
                    "", MessageError::MESSAGES_OK);
   } else {
-    for (size_t i = 0; i < msgList.msgItems.size(); i++) {
-      IMAP_MSG_Item msg = msgList.msgItems[i];
-      std::string from(msg.from);
-      size_t index = from.find(' ', 3);
-      if (index != std::string::npos) {
-        from.erase(index);
-      }
+    // Pick a message at random
+    size_t position = esp_random() % msgList.msgItems.size();
+    
+    IMAP_MSG_Item msg = msgList.msgItems[position];
+    std::string from(msg.from);
+    size_t index = from.find(' ', 3);
+    if (index != std::string::npos) {
+      from.erase(index);
+    }
 
-      if (!MailClient.setFlag(&_imap, atoi(msg.UID), "\\Seen", false)) {
-        invokeCallback("Flag setting failure", "", MessageError::MESSAGES_FLAG_SET_FAIL);
-      } else {
-        invokeCallback(msg.subject, from, MessageError::MESSAGES_OK);        
-      }
-      break;
+    if (!MailClient.setFlag(&_imap, atoi(msg.UID), "\\Seen", false)) {
+      invokeCallback("Flag setting failure", "", MessageError::MESSAGES_FLAG_SET_FAIL);
+    } else {
+      invokeCallback(msg.subject, from, MessageError::MESSAGES_OK);        
     }
   }
 }
@@ -96,7 +97,7 @@ bool IMAPFetcher::initilializeIMAP() {
   _config.enable.download_status = false;
 
   // Set the limit of number of messages in the search results
-  _config.limit.search = 1;
+  _config.limit.search = 100;
 
   /** Set the maximum size of message stored in
    * IMAPSession object in byte
