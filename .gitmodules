@@ -1,9 +1,6 @@
 [submodule "libraries/ESP-Mail-Client"]
 	path = libraries/ESP-Mail-Client
 	url = https://github.com/mobizt/ESP-Mail-Client.git
-[submodule "libraries/TTGO_TWatch_Library"]
-	path = libraries/TTGO_TWatch_Library
-	url = git@github.com:Xinyuan-LilyGO/TTGO_TWatch_Library.git
 [submodule "libraries/GxEPD"]
 	path = libraries/GxEPD
 	url = git@github.com:ZinggJM/GxEPD.git
