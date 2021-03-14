@@ -12,6 +12,10 @@
 #define IMAP_PASSWORD "#############"
 #define IMAP_FOLDER "MessageBox"
 
+// Network to connect to
+#define WIFI_SSID "########"
+#define WIFI_PASSWORD "#########"
+
 // The hardware this code is targetting. Uncomment one of those
 #define HARDWARE_LILYGO_T_BLOCK
 // #define HARDWARE_LILYGO_T_H239

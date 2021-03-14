@@ -11,7 +11,16 @@ GxIO_Class io(SPI, /*CS=5*/ EINK_SS, /*DC=*/ EINK_DC, /*RST=*/ EINK_RESET);
 GxEPD_Class e_paper(io, /*RST=*/ EINK_RESET, /*BUSY=*/ EINK_BUSY);
 TextDisplay text_display(e_paper);
 TextDisplay text_attribution(e_paper);
-IMAPFetcher fetcher;
+
+static IMAPConnectionData imap_connection_data = {
+  host     : IMAP_HOST,
+  port     : 993,
+  email    : EMAIL,
+  password : IMAP_PASSWORD,
+  folder   : IMAP_FOLDER
+};
+
+IMAPFetcher fetcher(imap_connection_data);
 
 // The button used.
 Button2 button = Button2(USER_BUTTON);
@@ -56,8 +65,6 @@ void setup() {
 
 	Serial.begin(115200);
   delay(200); // Give some time for the serial port to start.
-
-	Serial.begin(115200);
 
   SPI.begin(EINK_SPI_CLK, EINK_SPI_MISO, EINK_SPI_MOSI, EINK_SS);
   e_paper.init();

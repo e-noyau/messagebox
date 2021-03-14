@@ -35,7 +35,7 @@ void IMAPFetcher::imapCallback(IMAP_Status status) {
 
   if (msgList.msgItems.size() == 0) {
     invokeCallback("Sorry, all the messages have been consumed. Ask your loved ones for more!",
-                   "", MessageError::MESSAGES_OK);
+                   "", MessageError::MESSAGES_NO_MESSAGE_FOUND);
   } else {
     // Pick a message at random
     size_t position = esp_random() % msgList.msgItems.size();

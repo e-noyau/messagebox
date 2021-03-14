@@ -12,98 +12,129 @@
 // The display subsystem
 //***************************
 
-// The io port, the display, the graphic library, and our own text wrapper.
-GxIO_Class io(SPI, /*CS=5*/ EINK_SS, /*DC=*/ EINK_DC, /*RST=*/ EINK_RESET);
-GxEPD_Class e_paper(io, /*RST=*/ EINK_RESET, /*BUSY=*/ EINK_BUSY);
-TextDisplay text_display(e_paper);
-TextDisplay text_attribution(e_paper);
-
 #define MARGIN 3
 
-// Main Display
-static void setupScreen() {
-  bool is_large = max(e_paper.height(), e_paper.width()) > 200;
+class Screen {
+public:
+  Screen(): io_(SPI, /*CS=5*/ EINK_SS, /*DC=*/ EINK_DC, /*RST=*/ EINK_RESET),
+            e_paper_(io_, /*RST=*/ EINK_RESET, /*BUSY=*/ EINK_BUSY),
+            text_display_(e_paper_), text_attribution_(e_paper_) {};
+  void init();
+  void updateScreen(std::string currentMessage, std::string currentAuthor);
+private:
+  // The io port, the display, the graphic library, and our own text wrapper.
+  GxIO_Class io_;
+  GxEPD_Class e_paper_;
+  TextDisplay text_display_;
+  TextDisplay text_attribution_;
+};
+
+void Screen::init() {
+  SPI.begin(EINK_SPI_CLK, EINK_SPI_MISO, EINK_SPI_MOSI, EINK_SS);
+  e_paper_.init();
+
+  bool is_large = max(e_paper_.height(), e_paper_.width()) > 200;
   if (!is_large) {
-    text_display.setDisplayPosition(
+    text_display_.setDisplayPosition(
         Rect(MARGIN, MARGIN,
-             e_paper.width() - MARGIN * 2, e_paper.height() -  MARGIN * 2));
+             e_paper_.width() - MARGIN * 2, e_paper_.height() -  MARGIN * 2));
   } else {
     int attribution_height = 40;
-    
-    e_paper.setRotation(1);
-    text_display.setDisplayPosition(
-        Rect(attribution_height, MARGIN,
-             e_paper.width() - attribution_height - MARGIN * 2, e_paper.height() -  MARGIN * 2));
-             
-    e_paper.setRotation(0);
-    text_attribution.setDisplayPosition(
-       Rect(MARGIN, MARGIN, e_paper.width() - MARGIN, attribution_height - MARGIN * 2));
-  }  
-}
 
-static void updateScreen(std::string currentMessage, std::string currentAuthor) {  
-  bool is_large = max(e_paper.height(), e_paper.width()) > 200;
-  e_paper.fillScreen(GxEPD_WHITE);
+    e_paper_.setRotation(1);
+    text_display_.setDisplayPosition(
+        Rect(attribution_height,
+             MARGIN,
+             e_paper_.width() - attribution_height - MARGIN * 2,
+             e_paper_.height() -  MARGIN * 2));
+ 
+    e_paper_.setRotation(0);
+    text_attribution_.setDisplayPosition(
+       Rect(MARGIN, MARGIN,
+            e_paper_.width() - MARGIN, attribution_height - MARGIN * 2));
+  }  
+};
+
+void Screen::updateScreen(std::string currentMessage,
+                          std::string currentAuthor) {  
+  bool is_large = max(e_paper_.height(), e_paper_.width()) > 200;
+  e_paper_.fillScreen(GxEPD_WHITE);
   
   if (!is_large) {
-    text_display.update(currentMessage + " --" + currentAuthor);
+    text_display_.update(currentMessage + " --" + currentAuthor);
   } else {    
-    const Rect &position = text_display.position();
-    e_paper.setRotation(1);
-    text_display.update(currentMessage);
+    const Rect &position = text_display_.position();
+    e_paper_.setRotation(1);
+    text_display_.update(currentMessage);
 
-    e_paper.drawFastVLine(position.x - 3, position.y, position.height, GxEPD_BLACK);
+    e_paper_.drawFastVLine(position.x - 3, position.y, position.height,
+                           GxEPD_BLACK);
 
     if (currentAuthor.length()) {
-      e_paper.setRotation(0);
-      text_attribution.update(currentAuthor);
+      e_paper_.setRotation(0);
+      text_attribution_.update(currentAuthor);
     }
   }
-  e_paper.update();
+  e_paper_.update();
 }
 
 //***************************
-// The IoT subsystem
+// The IoT subsystem. The device will try to connect to a known WiFi. If there
+// is no know WiFi credentials, or if this particular Wifi is not found, the
+// device will create its own AP, with a config page to set it up.
 //***************************
 
-// The network block of the IoT.
-DNSServer dnsServer;
-WebServer server(80);
-IotWebConf iotWebConf(HOSTNAME, &dnsServer, &server, INITIAL_PASSWORD, "1.0");
+class IoT {
+public:
+  IoT(): server_(80), iotWebConf_(HOSTNAME, &dnsServer_, &server_, INITIAL_PASSWORD, "1.0") {};
+  void init();
+  void handleRoot();
+private:
+  // The network block of the IoT.
+  DNSServer dnsServer_;
+  WebServer server_;
+public:
+  IotWebConf iotWebConf_;
+};
+
+void IoT::init() {
+  // -- Initializing the configuration.
+  iotWebConf_.setConfigPin(USER_BUTTON);
+#if defined(USER_LED)
+  iotWebConf_.setStatusPin(USER_LED);
+#endif  // defined(USER_LED)
+
+  iotWebConf_.skipApStartup();
+  iotWebConf_.init();
+
+  // -- Set up required URL handlers on the web server.
+  server_.on("/",       [this]{ handleRoot(); });
+  server_.on("/config", [this]{ iotWebConf_.handleConfig(); });
+  server_.onNotFound(   [this]{ iotWebConf_.handleNotFound(); });
+};
 
 // Handle web requests to "/" path
-void handleRoot()
-{
+void IoT::handleRoot() {
   // -- Let IotWebConf test and handle captive portal requests.
-  if (iotWebConf.handleCaptivePortal())
-  {
+  if (iotWebConf_.handleCaptivePortal()) {
     // -- Captive portal request were already served.
     return;
   }
-  String s = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/>";
-  s += "<title>";
+  String s = "<html><head><title>";
   s += HOSTNAME;
-  s += "</title></head><body>Hello world!";
-  s += "Go to <a href='config'>configure page</a> to change settings.";
-  s += "</body></html>\n";
-
-  server.send(200, "text/html", s);
+  s += "</title></head><body>Go to <a href='config'>configure page</a> to change settings.</body></html>";
+  server_.send(200, "text/html", s);
 }
+
+
+IoT iot;
+Screen screen;
 
 // *************************
 // The IMAP fetcher
 // *************************
 
-// All the data to retrieve the emails.
-static IMAPConnectionData imap_connection_data = {
-  host     : IMAP_HOST,
-  port     : 993,
-  email    : EMAIL,
-  password : IMAP_PASSWORD,
-  folder   : IMAP_FOLDER
-};
-
-IMAPFetcher fetcher(imap_connection_data);
+IMAPFetcher *fetcher;
 
 // *************************
 // Setup and all
@@ -111,41 +142,26 @@ IMAPFetcher fetcher(imap_connection_data);
 void setup() 
 {
   Serial.begin(115200);
+  delay(200); // Give some time for the serial port to start.
 
-  SPI.begin(EINK_SPI_CLK, EINK_SPI_MISO, EINK_SPI_MOSI, EINK_SS);
-  e_paper.init();
-
-  setupScreen();
-
-  // -- Initializing the configuration.
-  iotWebConf.setConfigPin(USER_BUTTON);
-#if defined(USER_LED)
-  iotWebConf.setStatusPin(USER_LED);
-#endif  // defined(USER_LED)
-  
-  iotWebConf.skipApStartup();
-  iotWebConf.init();
-
-  // -- Set up required URL handlers on the web server.
-  server.on("/", handleRoot);
-  server.on("/config", []{ iotWebConf.handleConfig(); });
-  server.onNotFound([](){ iotWebConf.handleNotFound(); });
+  Serial.println("BOOT");
+  screen.init();
+  iot.init();
 }
 
 
-std::string currentState = "";
-std::string previousState = "";
-bool online = false;
+static std::string previousState = "";
+static bool online = false;
 
 void loop() {
   bool currentlyOnline = false;
+  IotWebConf &iotWebConf = iot.iotWebConf_;
   
   // -- doLoop should be called as frequently as possible.
   iotWebConf.doLoop();
   
   std::string title;
   std::ostringstream content;
-  
   auto state = iotWebConf.getState();
   switch (state) {
     case IOTWEBCONF_STATE_BOOT:
@@ -185,42 +201,51 @@ void loop() {
       content << "UNEXPECTED STATE.";
       break;
   }
-  currentState = content.str();
+  std::string currentState = content.str();
   if (currentState != previousState) {
-    updateScreen(currentState, title);
+    screen.updateScreen(currentState, title);
     previousState = currentState;
   }
   
   if (currentlyOnline != online) {
     online = currentlyOnline;
     
-    if (online) {  
-      bool result = fetcher.getFirstUnreadMessage(
+    if (online) {
+      IMAPConnectionData imap_connection_data = {
+        host     : IMAP_HOST,
+        port     : 993,
+        email    : EMAIL,
+        password : IMAP_PASSWORD,
+        folder   : IMAP_FOLDER
+      };
+      fetcher = new IMAPFetcher(imap_connection_data);
+      
+      bool result = fetcher->getFirstUnreadMessage(
           [] (const std::string &message, const std::string &author, MessageError error) -> void {
             switch(error) {
               case MESSAGES_OK:
-                updateScreen(message, author);
+                screen.updateScreen(message, author);
                 break;
               case MESSAGES_NO_MESSAGE_FOUND:
-                updateScreen("No more messages! Ask your loved ones for more.", "Add Love");
+                screen.updateScreen("No more messages! Ask your loved ones for more.", "Add Love");
                 break;
             	case MESSAGES_NO_NETWORK:
-                updateScreen(message, "No Network");
+                screen.updateScreen(message, "No Network");
                 break;
             	case MESSAGES_IMAP_CONNECTION_FAILED:
-                updateScreen(message, "IMAP Connection");
+                screen.updateScreen(message, "IMAP Connection");
                 break;
             	case MESSAGES_FOLDER_NOT_FOUND:
-                updateScreen(message, "Invalid Folder");
+                screen.updateScreen(message, "Invalid Folder");
                 break;
             	case MESSAGES_FLAG_SET_FAIL:
-                updateScreen(message, "Flag");
+                screen.updateScreen(message, "Flag");
                 break;
               case MESSAGES_CONNECTION_IN_PROGRESS:
-                updateScreen(message, "Reentry");
+                screen.updateScreen(message, "Reentry");
                 break;
               default:
-                updateScreen("Reboot, something failed", "OOOOPS!");
+                screen.updateScreen("Reboot, something failed", "OOOOPS!");
                 break;
             }
           });
